@@ -1,6 +1,6 @@
 /*!
-      * Heatmap v1.0.3
-      * (c) 2019 Narayana Swamy (narayanaswamy14@gmail.com)
+      * Heatmap v1.0.4
+      * (c) 2022 Narayana Swamy (narayanaswamy14@gmail.com)
       * @license BSD-3-Clause
       */
 function getPixlRatio (ctx) {
@@ -466,4 +466,4 @@ function Heatmap (context, config = {}) {
 	return new Chart(context, config);
 }
 
-export default Heatmap;
+export { Heatmap as default };

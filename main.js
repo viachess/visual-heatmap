@@ -1,4 +1,17 @@
-function getPixlRatio (ctx) {
+const isNumber = (param) => typeof param === 'number';
+const NOT_A_NUMBER_TYPE_ERROR_MESSAGE = 'Wrong parameter type, must be a number';
+const isUndefined = (param) => param === undefined;
+const UNDEFINED_PARAM_ERROR_MESSAGE = 'Parameter is undefined, pass number as a parameter';
+
+function checkNumberParameter (param) {
+	if (isUndefined(param)) {
+		throw new ReferenceError(UNDEFINED_PARAM_ERROR_MESSAGE);
+	} else if (!isNumber(param)) {
+		throw new TypeError(NOT_A_NUMBER_TYPE_ERROR_MESSAGE);
+	}
+}
+
+function getPixelRatio (ctx) {
 	const dpr = window.devicePixelRatio || 1;
 	const bsr = ctx.webkitBackingStorePixelRatio ||
         ctx.mozBackingStorePixelRatio ||
@@ -8,20 +21,6 @@ function getPixlRatio (ctx) {
 
 	return dpr / bsr;
 }
-
-var GradfragmentShader = `
-	precision mediump float;
-	uniform float u_max;
-	uniform float u_blur;
-	varying float v_i;
-	void main() {
-		float r = 0.0; 
-		vec2 cxy = 2.0 * gl_PointCoord - 1.0;
-		r = dot(cxy, cxy);
-		if(r <= 1.0) {
-			gl_FragColor = vec4(0, 0, 0, (v_i/u_max) * u_blur * (1.0 - sqrt(r)));
-		}
-	}`;
 
 var GradvertexShader = `
 	attribute vec2 a_position;
@@ -51,11 +50,36 @@ var GradvertexShader = `
 		v_i = a_intensity;
 	}`;
 
+var GradfragmentShader = `
+	precision mediump float;
+	uniform float u_max;
+	uniform float u_blur;
+	varying float v_i;
+	void main() {
+		float r = 0.0; 
+		vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+		r = dot(cxy, cxy);
+		if(r <= 1.0) {
+			gl_FragColor = vec4(0, 0, 0, (v_i/u_max) * u_blur * (1.0 - sqrt(r)));
+		}
+	}`;
+
+
+var ColorvertexShader = `
+	attribute vec2 a_texCoord;
+	varying vec2 v_texCoord;
+	void main() {
+		vec2 clipSpace = a_texCoord * 2.0 - 1.0;
+		gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+		v_texCoord = a_texCoord;
+	}`;
+
+// u_colorArr[100] means that this uniform takes up uniform 100 locations
 var ColorfragmentShader = `
 	precision mediump float;
 	varying vec2 v_texCoord;
 	uniform sampler2D u_framebuffer; uniform vec4 u_colorArr[100]; uniform float u_colorCount; uniform float u_opacity; uniform float u_offset[100];
-
+	
 	float remap ( float minval, float maxval, float curval ) {
 		return ( curval - minval ) / ( maxval - minval );
 	}
@@ -97,37 +121,61 @@ var ColorfragmentShader = `
 		}
 	}`;
 
-var ColorvertexShader = `
-	attribute vec2 a_texCoord;
-	varying vec2 v_texCoord;
-	void main() {
-		vec2 clipSpace = a_texCoord * 2.0 - 1.0;
-		gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
-		v_texCoord = a_texCoord;
-	}`;
+/**
+ * @typedef { Object } GradientColorPoint
+ * @property { number[] } color - RGBA values array, e.g. [0, 0, 255, 1.0]
+ * @property { number } offset - color position in gradient, ranges from 0.0 to 1.0
+ */
+/**
+ * @typedef { Object } GradientPointsMap
+ * @property { Float32Array } value - flattened array of normalized rgba values in range from 0 to 1
+ * @property { number } length - normalized color points array length
+ * @property { Float32Array } offset - array of color points offset values (from 0 to 1) 
+ */
 
-function Heatmap (context, config = {}) {
-	function gradientMapper (grad) {
+function Heatmap (containerElementSelector, config = {}) {
+	/**
+	 * 
+	 * @param { GradientColorPoint[] } gradientColorPointsArray
+	 * @returns { GradientPointsMap } Gradient points data for Color Fragment shader
+	 */
+	function gradientMapper (gradientColorPointsArray) {
 		const arr = [];
-		const gradLength = grad.length;
+		const gradientColorPointsArrayLength = gradientColorPointsArray.length;
 		const offSetsArray = [];
 
-		grad.forEach(function (d) {
-			arr.push(d.color[0] / 255);
-			arr.push(d.color[1] / 255);
-			arr.push(d.color[2] / 255);
-			arr.push(d.color[3] === undefined ? 1.0 : d.color[3]);
-			offSetsArray.push(d.offset);
-		});
+		gradientColorPointsArray.forEach(
+			/**
+			 * @description Forces rgb values into range from 0 to 1
+			 * @param {GradientColorPoint} gradientPoint
+			 */
+			function (gradientPoint) {
+				const red = gradientPoint.color[0];
+				const green = gradientPoint.color[1];
+				const blue = gradientPoint.color[2];
+				const alpha = gradientPoint.color[3] === undefined ? 1.0 : gradientPoint.color[3];
+				arr.push(red / 255);
+				arr.push(green / 255);
+				arr.push(blue / 255);
+				arr.push(alpha);
+				offSetsArray.push(gradientPoint.offset);
+			});
+
 		return {
-			value: new Float32Array(arr),
-			length: gradLength,
-			offset: offSetsArray
+			value: new Float32Array(arr), // flattened array of rgba values in range from 0 to 1
+			length: gradientColorPointsArrayLength, // normalized color points array length
+			offset: new Float32Array(offSetsArray) // array of color points offset values (from 0 to 1)
 		};
 	}
 
-	function createShader (ctx, type, src) {
-		var shader = ctx.createShader(ctx[type]);
+	/**
+	 * 
+	 * @param { WebGLRenderingContext } ctx
+	 * @param { 'VERTEX_SHADER' | 'FRAGMENT_SHADER' } shaderType
+	 * @param { String } src - raw GLSL code for shader
+	 */
+	function createShader (ctx, shaderType, src) {
+		var shader = ctx.createShader(ctx[shaderType]);
 		ctx.shaderSource(shader, src);
 		ctx.compileShader(shader);
 		var compiled = ctx.getShaderParameter(shader, ctx.COMPILE_STATUS);
@@ -139,7 +187,7 @@ function Heatmap (context, config = {}) {
 		return shader;
 	}
 
-	function createGradiantShader (ctx) {
+	function createGradientShader (ctx) {
 		var vshader = createShader(ctx, 'VERTEX_SHADER', GradvertexShader);
 		var fshader = createShader(ctx, 'FRAGMENT_SHADER', GradfragmentShader);
 		var program = ctx.createProgram();
@@ -187,6 +235,10 @@ function Heatmap (context, config = {}) {
 		};
 	}
 
+	/**
+	 * TODO: add return object type definitions
+	 * @param {WebGLRenderingContext} ctx 
+	 */
 	function createColorShader (ctx) {
 		var vshader = createShader(ctx, 'VERTEX_SHADER', ColorvertexShader);
 		var fshader = createShader(ctx, 'FRAGMENT_SHADER', ColorfragmentShader);
@@ -223,51 +275,93 @@ function Heatmap (context, config = {}) {
 		};
 	}
 
+	/** 
+	 * Device pixel ratio
+	 * @type { number }
+	*/
 	let ratio;
+	/**
+	 * Buffer for position vectors Float32Array
+	 * @type { ArrayBuffer }
+	 */
 	let buffer;
-	let posVec = [];
+	/**
+	 * flattened xy vector (vec2) coordinates container [x, y, x1, y1, x2, y2 etc...]
+	 * @type { Float32Array }
+	 */
+	let positionVectorsArray = [];
+	/**
+	 * Buffer for radius vectors Float32Array
+	 * @type { ArrayBuffer }
+	 */
 	let buffer2;
-	let rVec = [];
+	/**
+	 * Point radius vector (vec1) container [r1, r2, r3, etc...]
+	 * @type { Float32Array }
+	 */
+	let radiusVectorsArray = [];
+	/** 
+	 * point length?? TODO: Fix description
+	 * @type { number }
+	 */
 	let pLen = 0;
-	function extractData (data) {
-		const len = data.length;
+	
+	/**
+	 * @typedef { Object } HeatmapDataPoint
+	 * @property { number } x - x position on 2d plane
+	 * @property { number } y - y position on 2d plane
+	 * @property { number } value - current value for gradient calculation
+	 */
+
+	/**
+	 * @typedef { Object } ExtractedData
+	 * @property { Float32Array } posVec
+	 * @property { Float32Array } rVec
+	 */
+	/**
+	 * 
+	 * @param { HeatmapDataPoint[] } heatmapPoints 
+	 * @returns { ExtractedData }
+	 */
+	function extractData (heatmapPoints) {
+		const len = heatmapPoints.length;
 		if (pLen !== len) {
 			buffer = new ArrayBuffer(len * 8);
-			posVec = new Float32Array(buffer);
+			positionVectorsArray = new Float32Array(buffer);
 			buffer2 = new ArrayBuffer(len * 4);
-			rVec = new Float32Array(buffer2);
+			radiusVectorsArray = new Float32Array(buffer2);
 			pLen = len;
 		}
 		for (let i = 0; i < len; i++) {
-			posVec[i * 2] = data[i].x;
-			posVec[(i * 2) + 1] = data[i].y;
-			rVec[i] = data[i].value;
+			positionVectorsArray[i * 2] = heatmapPoints[i].x;
+			positionVectorsArray[(i * 2) + 1] = heatmapPoints[i].y;
+			radiusVectorsArray[i] = heatmapPoints[i].value;
 		}
 		return {
-			posVec: posVec,
-			rVec: rVec
+			posVec: positionVectorsArray,
+			rVec: radiusVectorsArray
 		};
 	}
 
-	function Chart (context, config) {
-		const res = document.querySelector(context);
+	function Chart (containerElementSelector, config) {
+		const res = document.querySelector(containerElementSelector);
 		const height = res.clientHeight;
 		const width = res.clientWidth;
 		const layer = document.createElement('canvas');
-		const ctx = layer.getContext('webgl', {
+		const gl = layer.getContext('webgl', {
 			premultipliedAlpha: false,
 			depth: false,
 			antialias: true,
 			alpha: true,
 			preserveDrawingBuffer: false
 		});
-		ratio = getPixlRatio(ctx);
-		console.log(ratio);
-		ctx.clearColor(0, 0, 0, 0);
-		ctx.enable(ctx.BLEND);
-		ctx.blendEquation(ctx.FUNC_ADD);
-		ctx.blendFunc(ctx.ONE, ctx.ONE_MINUS_SRC_ALPHA);
-		ctx.depthMask(true);
+		ratio = getPixelRatio(gl);
+		// console.log('pixel ratio: ', ratio);
+		gl.clearColor(0, 0, 0, 0);
+		gl.enable(gl.BLEND);
+		gl.blendEquation(gl.FUNC_ADD);
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.depthMask(true);
 		layer.setAttribute('height', height * ratio);
 		layer.setAttribute('width', width * ratio);
 		layer.style.height = `${height}px`;
@@ -276,15 +370,15 @@ function Heatmap (context, config = {}) {
 		res.appendChild(layer);
 
 		this.gradient = gradientMapper(config.gradient);
-		this.ctx = ctx;
+		this.ctx = gl;
 		this.width = width * ratio;
 		this.height = height * ratio;
 		this.layer = layer;
 		this.dom = res;
-		this.gradShadOP = createGradiantShader(this.ctx);
+		this.gradShadOP = createGradientShader(this.ctx);
 		this.colorShadOP = createColorShader(this.ctx);
-		this.fbTexObj = ctx.createTexture();
-		this.fbo = ctx.createFramebuffer();
+		this.fbTexObj = gl.createTexture();
+		this.fbo = gl.createFramebuffer();
 
 		this.size = config.size ? config.size : 20.0;
 		this.max = config.max ? config.max : Infinity;
@@ -297,7 +391,7 @@ function Heatmap (context, config = {}) {
 
 		this.rawData = [];
 
-		ctx.viewport(0, 0, ctx.canvas.width, ctx.canvas.height);
+		gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 	}
 
 	Chart.prototype.resize = function () {
@@ -325,35 +419,49 @@ function Heatmap (context, config = {}) {
 	};
 
 	Chart.prototype.setTranslate = function (translate) {
-		this.translate = (translate.length === 2) ? translate : [0, 0];
+		if (Array.isArray(translate) && translate.length === 2 && translate.every((value) => typeof value === 'number')) {
+			 this.translate = translate;
+		} else {
+			throw new TypeError('Wrong parameter value, must be an array with two numbers');
+		}
 		this.render(this.exData);
 	};
 
 	Chart.prototype.setZoom = function (zoom) {
-		this.zoom = zoom !== undefined ? zoom : 1.0;
+		checkNumberParameter(zoom);
+		this.zoom = zoom;
 		this.render(this.exData);
 	};
 
 	Chart.prototype.setRotationAngle = function (angle) {
-		this.angle = angle !== undefined ? angle : 0.0;
+		checkNumberParameter(angle);
+		this.angle = angle;
 		this.render(this.exData);
 	};
 
 	Chart.prototype.setSize = function (size) {
-		this.size = size !== undefined ? size : 20.0;
+		checkNumberParameter(size);
+		this.size = size;
 		this.render(this.exData);
 	};
 
 	Chart.prototype.setBlur = function (blur) {
-		this.blur = blur !== undefined ? blur : 1.0;
+		checkNumberParameter(blur);
+		this.blur = blur;
 		this.render(this.exData);
 	};
 
 	Chart.prototype.setOpacity = function (opacity) {
+		checkNumberParameter(opacity);
 		this.opacity = opacity !== undefined ? opacity : 1.0;
 		this.render(this.exData);
 	};
-
+  
+	/**
+	 * 
+	 * @param {  } data 
+	 * @param {*} transIntactFlag 
+	 */
 	Chart.prototype.addData = function (data, transIntactFlag) {
 		const self = this;
 		for (let i = 0; i < data.length; i++) {
@@ -412,7 +520,7 @@ function Heatmap (context, config = {}) {
 
 		ctx.uniform4fv(this.colorShadOP.uniform.u_colorArr, this.gradient.value);
 		ctx.uniform1f(this.colorShadOP.uniform.u_colorCount, this.gradient.length);
-		ctx.uniform1fv(this.colorShadOP.uniform.u_offset, new Float32Array(this.gradient.offset));
+		ctx.uniform1fv(this.colorShadOP.uniform.u_offset, this.gradient.offset);
 		ctx.uniform1f(this.colorShadOP.uniform.u_opacity, this.opacity);
 
 		this.colorShadOP.attr.forEach(function (d) {
@@ -458,7 +566,7 @@ function Heatmap (context, config = {}) {
 		data.y -= (this.translate[1]);
 	}
 
-	return new Chart(context, config);
+	return new Chart(containerElementSelector, config);
 }
 
 export default Heatmap;

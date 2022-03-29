@@ -1,13 +1,13 @@
 /*!
-      * Heatmap v1.0.3
-      * (c) 2019 Narayana Swamy (narayanaswamy14@gmail.com)
+      * Heatmap v1.0.4
+      * (c) 2022 Narayana Swamy (narayanaswamy14@gmail.com)
       * @license BSD-3-Clause
       */
 (function (global, factory) {
 	typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
 	typeof define === 'function' && define.amd ? define(factory) :
-	(global = global || self, global.visualHeatmap = factory());
-}(this, function () { 'use strict';
+	(global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.visualHeatmap = factory());
+})(this, (function () { 'use strict';
 
 	function getPixlRatio (ctx) {
 		const dpr = window.devicePixelRatio || 1;
