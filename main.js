@@ -120,6 +120,57 @@ var ColorfragmentShader = `
 			gl_FragColor = color_;
 		}
 	}`;
+// u_colorArr[100] means that this uniform takes up uniform 100 locations
+// eslint-disable-next-line no-unused-vars
+var ExperimentColorfragmentShader = `
+	precision mediump float;
+	varying vec2 v_texCoord;
+	uniform sampler2D u_framebuffer; uniform vec4 u_colorArr[100]; uniform float u_colorCount; uniform float u_opacity; uniform float u_offset[100];
+	
+	// interpolates between two edge floats based on curval
+	float remap ( float minval, float maxval, float curval ) {
+		return ( curval - minval ) / ( maxval - minval );
+	}
+
+	void main() {
+		// picks A value from RGBA vec4() return value of texture2D initiation
+		float alpha = texture2D(u_framebuffer, v_texCoord.xy).a;
+
+		if (alpha > 0.0 && alpha <= 1.0) {
+			vec4 color_;
+			if (alpha <= u_offset[0]) {
+				color_ = u_colorArr[0];
+			} else if (alpha <= u_offset[1]) {
+				// mix interpolates between x and y, based on passed third option
+				color_ = mix( u_colorArr[0], u_colorArr[1], remap( u_offset[0], u_offset[1], alpha ) );
+			} else if (alpha <= u_offset[2]) {
+				color_ = mix( u_colorArr[1], u_colorArr[2], remap( u_offset[1], u_offset[2], alpha ) );
+			} else if (alpha <= u_offset[3]) {
+				color_ = mix( u_colorArr[2], u_colorArr[3], remap( u_offset[2], u_offset[3], alpha ) );
+			} else if (alpha <= u_offset[4]) {
+				color_ = mix( u_colorArr[3], u_colorArr[4], remap( u_offset[3], u_offset[4], alpha ) );
+			} else if (alpha <= u_offset[5]) {
+				color_ = mix( u_colorArr[4], u_colorArr[5], remap( u_offset[4], u_offset[5], alpha ) );
+			} else if (alpha <= u_offset[6]) {
+				color_ = mix( u_colorArr[5], u_colorArr[6], remap( u_offset[5], u_offset[6], alpha ) );
+			} else if (alpha <= u_offset[7]) {
+				color_ = mix( u_colorArr[6], u_colorArr[7], remap( u_offset[6], u_offset[7], alpha ) );
+			} else if (alpha <= u_offset[8]) {
+				color_ = mix( u_colorArr[7], u_colorArr[8], remap( u_offset[7], u_offset[8], alpha ) );
+			} else if (alpha <= u_offset[9]) {
+				color_ = mix( u_colorArr[8], u_colorArr[9], remap( u_offset[8], u_offset[9], alpha ) );
+			} else if (alpha <= u_offset[10]) {
+				color_ = mix( u_colorArr[9], u_colorArr[10], remap( u_offset[9], u_offset[10], alpha ) );
+			} else {
+				color_ = vec4(0.0, 0.0, 0.0, 0.0);
+			}
+			color_.a = color_.a - (1.0 - u_opacity);
+			if (color_.a < 0.0) {
+				color_.a = 0.0;
+			}
+			gl_FragColor = color_;
+		}
+	}`;
 
 /**
  * @typedef { Object } GradientColorPoint
@@ -236,7 +287,6 @@ function Heatmap (containerElementSelector, config = {}) {
 	}
 
 	/**
-	 * TODO: add return object type definitions
 	 * @param {WebGLRenderingContext} ctx 
 	 */
 	function createColorShader (ctx) {
@@ -319,12 +369,13 @@ function Heatmap (containerElementSelector, config = {}) {
 	 * @property { Float32Array } rVec
 	 */
 	/**
-	 * 
+	 * interpolates passed data points
 	 * @param { HeatmapDataPoint[] } heatmapPoints 
 	 * @returns { ExtractedData }
 	 */
 	function extractData (heatmapPoints) {
 		const len = heatmapPoints.length;
+
 		if (pLen !== len) {
 			buffer = new ArrayBuffer(len * 8);
 			positionVectorsArray = new Float32Array(buffer);
@@ -332,6 +383,7 @@ function Heatmap (containerElementSelector, config = {}) {
 			radiusVectorsArray = new Float32Array(buffer2);
 			pLen = len;
 		}
+
 		for (let i = 0; i < len; i++) {
 			positionVectorsArray[i * 2] = heatmapPoints[i].x;
 			positionVectorsArray[(i * 2) + 1] = heatmapPoints[i].y;
@@ -344,41 +396,55 @@ function Heatmap (containerElementSelector, config = {}) {
 	}
 
 	function Chart (containerElementSelector, config) {
-		const res = document.querySelector(containerElementSelector);
-		const height = res.clientHeight;
-		const width = res.clientWidth;
-		const layer = document.createElement('canvas');
-		const gl = layer.getContext('webgl', {
+		const containerHTMLElement = document.querySelector(containerElementSelector);
+		const height = containerHTMLElement.clientHeight;
+		const width = containerHTMLElement.clientWidth;
+		// --
+		const canvas = document.createElement('canvas');
+		const gl = canvas.getContext('webgl', {
 			premultipliedAlpha: false,
 			depth: false,
 			antialias: true,
 			alpha: true,
 			preserveDrawingBuffer: false
 		});
-		ratio = getPixelRatio(gl);
-		// console.log('pixel ratio: ', ratio);
-		gl.clearColor(0, 0, 0, 0);
-		gl.enable(gl.BLEND);
-		gl.blendEquation(gl.FUNC_ADD);
-		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-		gl.depthMask(true);
-		layer.setAttribute('height', height * ratio);
-		layer.setAttribute('width', width * ratio);
-		layer.style.height = `${height}px`;
-		layer.style.width = `${width}px`;
-		layer.style.position = 'absolute';
-		res.appendChild(layer);
 
-		this.gradient = gradientMapper(config.gradient);
-		this.ctx = gl;
+		ratio = getPixelRatio(gl);
+		// -- set canvas DOM element width and height
+		canvas.setAttribute('height', height * ratio);
+		canvas.setAttribute('width', width * ratio);
+		canvas.style.height = `${height}px`;
+		canvas.style.width = `${width}px`;
+		canvas.style.position = 'absolute';
+		containerHTMLElement.appendChild(canvas);
+		// --
 		this.width = width * ratio;
 		this.height = height * ratio;
-		this.layer = layer;
-		this.dom = res;
+		this.containerHTMLElement = containerHTMLElement;
+		this.canvas = canvas;
+		// -- webgl setup
+		gl.clearColor(0, 0, 0, 0);
+		gl.enable(gl.BLEND); // Activates blending of the computed fragment color values.
+
+		// blendEquation();
+		// specifying how source and destination colors are combined. gl.FUNC_ADD: source + destination
+		gl.blendEquation(gl.FUNC_ADD);
+		
+		// blendFunc()
+		// method of the WebGL API defines which function is used for blending pixel arithmetic
+		// gl.ONE - 1,1,1,1	Multiplies all colors by 1
+		// gl.ONE_MINUS_SRC_ALPHA	1-AS, 1-AS, 1-AS, 1-AS	Multiplies all colors by 1 minus the source alpha value.
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+		gl.depthMask(true);
+
+		this.ctx = gl;
+		this.gradient = gradientMapper(config.gradient);
+
 		this.gradShadOP = createGradientShader(this.ctx);
 		this.colorShadOP = createColorShader(this.ctx);
-		this.fbTexObj = gl.createTexture();
-		this.fbo = gl.createFramebuffer();
+
+		this.frameBufferTextureObject = gl.createTexture();
+		this.frameBufferObject = gl.createFramebuffer();
 
 		this.size = config.size ? config.size : 20.0;
 		this.max = config.max ? config.max : Infinity;
@@ -395,12 +461,12 @@ function Heatmap (containerElementSelector, config = {}) {
 	}
 
 	Chart.prototype.resize = function () {
-		const height = this.dom.clientHeight;
-		const width = this.dom.clientWidth;
-		this.layer.setAttribute('height', height * ratio);
-		this.layer.setAttribute('width', width * ratio);
-		this.layer.style.height = `${height}px`;
-		this.layer.style.width = `${width}px`;
+		const height = this.containerHTMLElement.clientHeight;
+		const width = this.containerHTMLElement.clientWidth;
+		this.canvas.setAttribute('height', height * ratio);
+		this.canvas.setAttribute('width', width * ratio);
+		this.canvas.style.height = `${height}px`;
+		this.canvas.style.width = `${width}px`;
 		this.width = width * ratio;
 		this.height = height * ratio;
 		this.ctx.viewport(0, 0, this.width, this.height);
@@ -414,6 +480,7 @@ function Heatmap (containerElementSelector, config = {}) {
 	};
 
 	Chart.prototype.setMax = function (max) {
+		checkNumberParameter(max);
 		this.max = max;
 		this.render(this.exData);
 	};
@@ -460,7 +527,7 @@ function Heatmap (containerElementSelector, config = {}) {
 	/**
 	 * 
 	 * @param {  } data 
-	 * @param {*} transIntactFlag 
+	 * @param { boolean } transIntactFlag 
 	 */
 	Chart.prototype.addData = function (data, transIntactFlag) {
 		const self = this;
@@ -505,14 +572,14 @@ function Heatmap (containerElementSelector, config = {}) {
 			ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
 		});
 
-		ctx.bindTexture(ctx.TEXTURE_2D, this.fbTexObj);
+		ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
 		ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.RGBA, this.width, this.height, 0, ctx.RGBA, ctx.UNSIGNED_BYTE, null);
 		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_S, ctx.CLAMP_TO_EDGE);
 		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_T, ctx.CLAMP_TO_EDGE);
 		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_MIN_FILTER, ctx.LINEAR);
 
-		ctx.bindFramebuffer(ctx.FRAMEBUFFER, this.fbo);
-		ctx.framebufferTexture2D(ctx.FRAMEBUFFER, ctx.COLOR_ATTACHMENT0, ctx.TEXTURE_2D, this.fbTexObj, 0);
+		ctx.bindFramebuffer(ctx.FRAMEBUFFER, this.frameBufferObject);
+		ctx.framebufferTexture2D(ctx.FRAMEBUFFER, ctx.COLOR_ATTACHMENT0, ctx.TEXTURE_2D, this.frameBufferTextureObject, 0);
 
 		ctx.drawArrays(ctx.POINTS, 0, exData.posVec.length / 2);
 		ctx.bindFramebuffer(ctx.FRAMEBUFFER, null);
@@ -532,7 +599,7 @@ function Heatmap (containerElementSelector, config = {}) {
 
 		ctx.uniform1i(this.colorShadOP.uniform.u_framebuffer, 0);
 		ctx.activeTexture(ctx.TEXTURE0);
-		ctx.bindTexture(ctx.TEXTURE_2D, this.fbTexObj);
+		ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
 
 		ctx.drawArrays(ctx.TRIANGLES, 0, 6);
 	};
