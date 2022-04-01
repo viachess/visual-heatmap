@@ -11,6 +11,13 @@ function checkNumberParameter (param) {
 	}
 }
 
+// function getClosestNumber (array, goal) {
+// 	const closest = array.reduce(function (prev, curr) {
+// 		return (Math.abs(curr - goal) < Math.abs(prev - goal) ? curr : prev);
+// 	});
+// 	return closest;
+// }
+
 function getPixelRatio (ctx) {
 	const dpr = window.devicePixelRatio || 1;
 	const bsr = ctx.webkitBackingStorePixelRatio ||
@@ -78,7 +85,11 @@ var ColorvertexShader = `
 var ColorfragmentShader = `
 	precision mediump float;
 	varying vec2 v_texCoord;
-	uniform sampler2D u_framebuffer; uniform vec4 u_colorArr[100]; uniform float u_colorCount; uniform float u_opacity; uniform float u_offset[100];
+	uniform sampler2D u_framebuffer; 
+	uniform vec4 u_colorArr[100]; 
+	uniform float u_colorCount; 
+	uniform float u_offset[100];
+	uniform float u_opacity; 
 	
 	float remap ( float minval, float maxval, float curval ) {
 		return ( curval - minval ) / ( maxval - minval );
@@ -86,34 +97,29 @@ var ColorfragmentShader = `
 
 	void main() {
 		float alpha = texture2D(u_framebuffer, v_texCoord.xy).a;
+		int matchFound = 0;
 		if (alpha > 0.0 && alpha <= 1.0) {
 			vec4 color_;
 			if (alpha <= u_offset[0]) {
 				color_ = u_colorArr[0];
-			} else if (alpha <= u_offset[1]) {
-				color_ = mix( u_colorArr[0], u_colorArr[1], remap( u_offset[0], u_offset[1], alpha ) );
-			} else if (alpha <= u_offset[2]) {
-				color_ = mix( u_colorArr[1], u_colorArr[2], remap( u_offset[1], u_offset[2], alpha ) );
-			} else if (alpha <= u_offset[3]) {
-				color_ = mix( u_colorArr[2], u_colorArr[3], remap( u_offset[2], u_offset[3], alpha ) );
-			} else if (alpha <= u_offset[4]) {
-				color_ = mix( u_colorArr[3], u_colorArr[4], remap( u_offset[3], u_offset[4], alpha ) );
-			} else if (alpha <= u_offset[5]) {
-				color_ = mix( u_colorArr[4], u_colorArr[5], remap( u_offset[4], u_offset[5], alpha ) );
-			} else if (alpha <= u_offset[6]) {
-				color_ = mix( u_colorArr[5], u_colorArr[6], remap( u_offset[5], u_offset[6], alpha ) );
-			} else if (alpha <= u_offset[7]) {
-				color_ = mix( u_colorArr[6], u_colorArr[7], remap( u_offset[6], u_offset[7], alpha ) );
-			} else if (alpha <= u_offset[8]) {
-				color_ = mix( u_colorArr[7], u_colorArr[8], remap( u_offset[7], u_offset[8], alpha ) );
-			} else if (alpha <= u_offset[9]) {
-				color_ = mix( u_colorArr[8], u_colorArr[9], remap( u_offset[8], u_offset[9], alpha ) );
-			} else if (alpha <= u_offset[10]) {
-				color_ = mix( u_colorArr[9], u_colorArr[10], remap( u_offset[9], u_offset[10], alpha ) );
-			} else {
+				matchFound = 1;
+			}
+
+			for (int i=1; i<10; ++i) 
+			{
+				if (alpha <= u_offset[i] && matchFound != 1) {
+					color_ = mix( u_colorArr[i-1], u_colorArr[i], remap( u_offset[i-1], u_offset[i], alpha ) );
+					matchFound = 1;
+				}
+			}
+
+			if (matchFound != 1) {
 				color_ = vec4(0.0, 0.0, 0.0, 0.0);
 			}
+
+			// adjust color alpha channel to match config opacity parameter
 			color_.a = color_.a - (1.0 - u_opacity);
+
 			if (color_.a < 0.0) {
 				color_.a = 0.0;
 			}
@@ -133,7 +139,7 @@ var ExperimentColorfragmentShader = `
 	}
 
 	void main() {
-		// picks A value from RGBA vec4() return value of texture2D initiation
+		// picks alpha value from RGBA vec4() return value of texture2D initiation
 		float alpha = texture2D(u_framebuffer, v_texCoord.xy).a;
 
 		if (alpha > 0.0 && alpha <= 1.0) {
@@ -170,6 +176,93 @@ var ExperimentColorfragmentShader = `
 			}
 			gl_FragColor = color_;
 		}
+	}`;
+
+// exData is positions in posVec float32array and rVec for values, float32array as well
+// plan:
+// (x, y)[] and value[] arrays. x and y mark the CENTER of data point
+// 1. in comes float value of offset
+// 2. 
+
+var rectangleVertexShader = `
+	// attribute float a_offset;
+
+	uniform vec2 u_resolution;
+	uniform float u_max;
+
+	attribute vec2 a_position;
+	attribute vec2 a_texcoord;
+	// point value, pressure difference
+	attribute float a_value;
+	
+	varying vec2 v_texcoord;
+	varying float v_offset;
+	
+	void main() {
+		vec2 zeroToOne = (a_position) / (u_resolution);
+		vec2 zeroToTwo = zeroToOne * 2.0 - 1.0;
+
+		gl_Position = vec4(zeroToTwo , 0, 1);
+
+		v_texcoord = a_texcoord;
+		v_offset = (a_value) / (u_max);
+	}
+`;
+
+var rectangleFragmentShader = `
+	precision mediump float;	
+
+	// uniform float u_colorCount;
+	uniform vec4 u_colorArr[100]; 
+	uniform float u_offset[100];
+
+	// float alpha = texture2D(u_framebuffer, v_texCoord.xy).a;
+
+	varying vec2 v_texcoord;
+	varying float v_offset;
+
+	vec4 tl;
+	vec4 tr;
+	vec4 bl;
+	vec4 br;
+
+	float remap ( float minval, float maxval, float curval ) {
+		return ( curval - minval ) / ( maxval - minval );
+	}
+
+	void main() {
+		int matchFound = 0;
+		if (v_offset > 0.0 && v_offset <= 1.0) {
+
+			if (v_offset <= u_offset[0]) {
+				tl = u_colorArr[0];
+				tr = u_colorArr[0];
+				bl = u_colorArr[0];
+				br = u_colorArr[0];
+				matchFound = 1;
+			}
+
+			for (int i=1; i<10; ++i) 
+			{
+				if (v_offset <= u_offset[i] && matchFound != 1) {
+					tl = mix( u_colorArr[i-1], u_colorArr[i], remap( u_offset[i-1], u_offset[i], v_offset ) );
+					tr = mix( u_colorArr[i-1], u_colorArr[i], remap( u_offset[i-1], u_offset[i], v_offset ) );
+					bl = mix( u_colorArr[i-1], u_colorArr[i], remap( u_offset[i-1], u_offset[i], v_offset ) );
+					br = mix( u_colorArr[i-1], u_colorArr[i], remap( u_offset[i-1], u_offset[i], v_offset ) );
+					matchFound = 1;
+				}
+			}
+			if (matchFound != 1) {
+				tl = vec4(0.0, 0.0, 0.0, 1.0);
+				tr = vec4(0.0, 0.0, 0.0, 1.0);
+				bl = vec4(0.0, 0.0, 0.0, 1.0);
+				br = vec4(0.0, 0.0, 0.0, 1.0);
+			}
+		}
+		vec4 l = mix(bl, tl, v_texcoord.t);
+		vec4 r = mix(br, tr, v_texcoord.t);
+		vec4 c = mix(l, r, v_texcoord.s);
+		gl_FragColor = c;
 	}`;
 
 /**
@@ -325,6 +418,86 @@ function Heatmap (containerElementSelector, config = {}) {
 		};
 	}
 
+	/**
+	 * @param {WebGLRenderingContext} ctx 
+	 */
+	function createRectangleShader (ctx) {
+		var vshader = createShader(ctx, 'VERTEX_SHADER', rectangleVertexShader);
+		var fshader = createShader(ctx, 'FRAGMENT_SHADER', rectangleFragmentShader);
+		var program = ctx.createProgram();
+		ctx.attachShader(program, vshader);
+		ctx.attachShader(program, fshader);
+		ctx.linkProgram(program);
+
+		var linked = ctx.getProgramParameter(program, ctx.LINK_STATUS);
+		if (!linked) {
+			var lastError = ctx.getProgramInfoLog(program);
+			console.error('Error in program linking:' + lastError);
+			ctx.deleteProgram(program);
+		}
+
+		return {
+			program: program,
+			attr: [{
+				/* 
+					[0] a_position
+					[1] a_value
+					[2] a_size
+					[3] a_texcoord
+				*/
+				/* 
+					this.rectangleShadOP.attr[0].data = exData.posVec;
+					this.rectangleShadOP.attr[1].data = exData.rVec;
+					this.rectangleShadOP.attr[2].data = exData.sizeVec;
+					this.rectangleShadOP.attr[3].data = exData.texcoord;
+				*/
+
+				bufferType: ctx.ARRAY_BUFFER,
+				buffer: ctx.createBuffer(),
+				drawType: ctx.STATIC_DRAW,
+				valueType: ctx.FLOAT,
+				size: 2,
+				attribute: ctx.getAttribLocation(program, 'a_position'),
+				data: new Float32Array([])
+			},
+			{
+				bufferType: ctx.ARRAY_BUFFER,
+				buffer: ctx.createBuffer(),
+				drawType: ctx.STATIC_DRAW,
+				valueType: ctx.FLOAT,
+				size: 1,
+				attribute: ctx.getAttribLocation(program, 'a_value'),
+				data: new Float32Array([])
+			},
+			// vec2 x and y coordinate
+			{
+				bufferType: ctx.ARRAY_BUFFER,
+				buffer: ctx.createBuffer(),
+				drawType: ctx.STATIC_DRAW,
+				valueType: ctx.FLOAT,
+				size: 2,
+				attribute: ctx.getAttribLocation(program, 'a_size'),
+				data: new Float32Array([])
+			},
+			{
+				bufferType: ctx.ARRAY_BUFFER,
+				buffer: ctx.createBuffer(),
+				drawType: ctx.STATIC_DRAW,
+				valueType: ctx.FLOAT,
+				size: 2,
+				attribute: ctx.getAttribLocation(program, 'a_texcoord'),
+				data: new Float32Array([])
+			}
+			],
+			uniform: {
+				u_max: ctx.getUniformLocation(program, 'u_max'),
+				u_colorArr: ctx.getUniformLocation(program, 'u_colorArr'),
+				u_offset: ctx.getUniformLocation(program, 'u_offset'),
+				u_resolution: ctx.getUniformLocation(program, 'u_resolution')
+			}
+		};
+	}
+
 	/** 
 	 * Device pixel ratio
 	 * @type { number }
@@ -350,6 +523,9 @@ function Heatmap (containerElementSelector, config = {}) {
 	 * @type { Float32Array }
 	 */
 	let radiusVectorsArray = [];
+	
+	let buffer3;
+	let sizeVectorsArray = [];
 	/** 
 	 * point length?? TODO: Fix description
 	 * @type { number }
@@ -375,23 +551,84 @@ function Heatmap (containerElementSelector, config = {}) {
 	 */
 	function extractData (heatmapPoints) {
 		const len = heatmapPoints.length;
+		// sizeX: 0.07142857142857142, sizeY: 18.15}
+		// const createRectangeCoords = (point) => {
 
+		// };
 		if (pLen !== len) {
-			buffer = new ArrayBuffer(len * 8);
+			buffer = new ArrayBuffer((len * Float32Array.BYTES_PER_ELEMENT) * 12);
 			positionVectorsArray = new Float32Array(buffer);
-			buffer2 = new ArrayBuffer(len * 4);
+			buffer2 = new ArrayBuffer(len * Float32Array.BYTES_PER_ELEMENT * 1);
+			// point values
 			radiusVectorsArray = new Float32Array(buffer2);
+			buffer3 = new ArrayBuffer((len * Float32Array.BYTES_PER_ELEMENT) * 2);
+			sizeVectorsArray = new Float32Array(buffer3);
 			pLen = len;
 		}
 
 		for (let i = 0; i < len; i++) {
-			positionVectorsArray[i * 2] = heatmapPoints[i].x;
-			positionVectorsArray[(i * 2) + 1] = heatmapPoints[i].y;
+			const centerX = heatmapPoints[i].xRange;
+			const centerY = (((heatmapPoints[i].y / 550.0) * 2.0) - 1.0) * -1.0;
+			// console.log('centerX', centerX);
+			// console.log('centerY', centerY);
+			// interpolated.
+			const stepX = heatmapPoints[i].sizeX;
+			// not interpolated, in pixels
+			const stepY = (heatmapPoints[i].sizeY / 550.0) < -1.0 ? -1.0 : (heatmapPoints[i].sizeY / 550.0);
+	
+		  // [x] -1, -1, 
+			// [x]  1, -1, 
+			// [] -1,  1,
+			// [] -1,  1,
+			// [] 1, -1,
+			// []	1,  1,
+			const bottomLeft = {
+				x: centerX - stepX,
+				y: centerY - stepY
+			};
+			const bottomRight = {
+				x: centerX + stepX,
+				y: centerY - stepY
+			};
+			const topLeft = {
+				x: centerX - stepX,
+				y: centerY + stepY
+			};
+			const topRight = {
+				x: centerX + stepX,
+				y: centerY + stepY
+			};
+			
+			// bottom left
+			positionVectorsArray[i * 12] = bottomLeft.x;
+			positionVectorsArray[(i * 12) + 1] = bottomLeft.y;
+			// bottom right
+			positionVectorsArray[(i * 12) + 2] = bottomRight.x;
+			positionVectorsArray[(i * 12) + 3] = bottomRight.y;
+			// top left
+			positionVectorsArray[(i * 12) + 4] = topLeft.x;
+			positionVectorsArray[(i * 12) + 5] = topLeft.y;
+			// top left
+			positionVectorsArray[(i * 12) + 6] = topLeft.x;
+			positionVectorsArray[(i * 12) + 7] = topLeft.y;
+			// bottom right
+			positionVectorsArray[(i * 12) + 8] = bottomRight.x;
+			positionVectorsArray[(i * 12) + 9] = bottomRight.y;
+			// top right
+			positionVectorsArray[(i * 12) + 10] = topRight.x;
+			positionVectorsArray[(i * 12) + 11] = topRight.y;
+			// point value
 			radiusVectorsArray[i] = heatmapPoints[i].value;
+			// horizontal and vertical rectangle size
+			sizeVectorsArray[i * 2] = heatmapPoints[i].sizeX;
+			sizeVectorsArray[(i * 2) + 1] = heatmapPoints[i].sizeY;
 		}
+		console.log(positionVectorsArray);
+		console.log('positionVectorsArray');
 		return {
 			posVec: positionVectorsArray,
-			rVec: radiusVectorsArray
+			rVec: radiusVectorsArray,
+			sizeVec: sizeVectorsArray
 		};
 	}
 
@@ -442,6 +679,8 @@ function Heatmap (containerElementSelector, config = {}) {
 
 		this.gradShadOP = createGradientShader(this.ctx);
 		this.colorShadOP = createColorShader(this.ctx);
+
+		this.rectangleShadOP = createRectangleShader(this.ctx);
 
 		this.frameBufferTextureObject = gl.createTexture();
 		this.frameBufferObject = gl.createFramebuffer();
@@ -542,76 +781,128 @@ function Heatmap (containerElementSelector, config = {}) {
 
 	Chart.prototype.renderData = function (data) {
 		const exData = extractData(data);
+		// console.log('extractedData: ');
+		// console.log(exData);
 		this.rawData = data;
 		this.render(exData);
 	};
 
 	Chart.prototype.render = function (exData) {
 		const ctx = this.ctx;
+		// posVec & rVec
 		this.exData = exData;
-		this.gradShadOP.attr[0].data = exData.posVec;
-		this.gradShadOP.attr[1].data = exData.rVec;
-		
 		ctx.clear(ctx.COLOR_BUFFER_BIT | ctx.DEPTH_BUFFER_BIT);
+		if (config.type === 'horizontal') {
+			/* 
+					[0] a_position
+					[1] a_value
+					[2] a_size
+					[3] a_offset
+				*/
+			/* 
+					this.rectangleShadOP.attr[0].data = exData.posVec;
+					this.rectangleShadOP.attr[1].data = exData.rVec;
+					this.rectangleShadOP.attr[2].data = exData.sizeVec;
+					this.rectangleShadOP.attr[3].data = exData.offset;
+				*/
+			this.rectangleShadOP.attr[0].data = exData.posVec;
+			this.rectangleShadOP.attr[1].data = exData.rVec;
+			this.rectangleShadOP.attr[2].data = exData.sizeVec;
+			// texcoord
+			this.rectangleShadOP.attr[3].data = new Float32Array([
+				0, 0,
+				1, 0,
+				0, 1,
+				0, 1,
+				1, 0,
+				1, 1
+		 ]);
 		
-		ctx.useProgram(this.gradShadOP.program);
 
-		ctx.uniform2fv(this.gradShadOP.uniform.u_resolution, new Float32Array([this.width, this.height]));
-		ctx.uniform2fv(this.gradShadOP.uniform.u_translate, new Float32Array([this.translate[0], this.translate[1]]));
-		ctx.uniform1f(this.gradShadOP.uniform.u_zoom, this.zoom ? this.zoom : 0.01);
-		ctx.uniform1f(this.gradShadOP.uniform.u_angle, this.angle);
-		ctx.uniform1f(this.gradShadOP.uniform.u_density, this.ratio);
-		ctx.uniform1f(this.gradShadOP.uniform.u_max, this.max);
-		ctx.uniform1f(this.gradShadOP.uniform.u_size, this.size);
-		ctx.uniform1f(this.gradShadOP.uniform.u_blur, this.blur);
-		
-		this.gradShadOP.attr.forEach(function (d) {
-			ctx.bindBuffer(d.bufferType, d.buffer);
-			ctx.bufferData(d.bufferType, d.data, d.drawType);
-			ctx.enableVertexAttribArray(d.attribute);
-			ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
-		});
+			ctx.uniform2fv(this.rectangleShadOP.uniform.u_resolution, new Float32Array([this.width, this.height]));
+			ctx.uniform4fv(this.rectangleShadOP.uniform.u_colorArr, this.gradient.value);
+			ctx.uniform1fv(this.rectangleShadOP.uniform.u_offset, this.gradient.offset);
+			ctx.uniform1f(this.rectangleShadOP.uniform.u_max, this.max);
+			// ctx.uniform1f(this.rectangeShadOP.uniform.u_colorCount, this.gradient.length);
 
-		ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
-		ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.RGBA, this.width, this.height, 0, ctx.RGBA, ctx.UNSIGNED_BYTE, null);
-		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_S, ctx.CLAMP_TO_EDGE);
-		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_T, ctx.CLAMP_TO_EDGE);
-		ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_MIN_FILTER, ctx.LINEAR);
+			this.rectangleShadOP.attr.forEach(function (d) {
+				ctx.bindBuffer(d.bufferType, d.buffer);
+				ctx.bufferData(d.bufferType, d.data, d.drawType);
+				ctx.enableVertexAttribArray(d.attribute);
+				ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
+			});
 
-		ctx.bindFramebuffer(ctx.FRAMEBUFFER, this.frameBufferObject);
-		ctx.framebufferTexture2D(ctx.FRAMEBUFFER, ctx.COLOR_ATTACHMENT0, ctx.TEXTURE_2D, this.frameBufferTextureObject, 0);
+			ctx.useProgram(this.rectangleShadOP.program);
+			ctx.drawArrays(ctx.TRIANGLES, 0, 6);
+			// console.log(`horizontal mode on.`);
+		}
+		if (config.type === 'circle') {
+			this.gradShadOP.attr[0].data = exData.posVec;
+			this.gradShadOP.attr[1].data = exData.rVec;
+			
+			ctx.useProgram(this.gradShadOP.program);
 
-		ctx.drawArrays(ctx.POINTS, 0, exData.posVec.length / 2);
-		ctx.bindFramebuffer(ctx.FRAMEBUFFER, null);
-		ctx.useProgram(this.colorShadOP.program);
+			ctx.uniform2fv(this.gradShadOP.uniform.u_resolution, new Float32Array([this.width, this.height]));
+			ctx.uniform2fv(this.gradShadOP.uniform.u_translate, new Float32Array([this.translate[0], this.translate[1]]));
+			ctx.uniform1f(this.gradShadOP.uniform.u_zoom, this.zoom ? this.zoom : 0.01);
+			ctx.uniform1f(this.gradShadOP.uniform.u_angle, this.angle);
+			ctx.uniform1f(this.gradShadOP.uniform.u_density, this.ratio);
+			ctx.uniform1f(this.gradShadOP.uniform.u_max, this.maxValue);
+			ctx.uniform1f(this.gradShadOP.uniform.u_size, this.size);
+			ctx.uniform1f(this.gradShadOP.uniform.u_blur, this.blur);
+			
+			this.gradShadOP.attr.forEach(function (d) {
+				ctx.bindBuffer(d.bufferType, d.buffer);
+				ctx.bufferData(d.bufferType, d.data, d.drawType);
+				ctx.enableVertexAttribArray(d.attribute);
+				ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
+			});
 
-		ctx.uniform4fv(this.colorShadOP.uniform.u_colorArr, this.gradient.value);
-		ctx.uniform1f(this.colorShadOP.uniform.u_colorCount, this.gradient.length);
-		ctx.uniform1fv(this.colorShadOP.uniform.u_offset, this.gradient.offset);
-		ctx.uniform1f(this.colorShadOP.uniform.u_opacity, this.opacity);
+			ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
+			ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.RGBA, this.width, this.height, 0, ctx.RGBA, ctx.UNSIGNED_BYTE, null);
+			ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_S, ctx.CLAMP_TO_EDGE);
+			ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_WRAP_T, ctx.CLAMP_TO_EDGE);
+			ctx.texParameteri(ctx.TEXTURE_2D, ctx.TEXTURE_MIN_FILTER, ctx.LINEAR);
 
-		this.colorShadOP.attr.forEach(function (d) {
-			ctx.bindBuffer(d.bufferType, d.buffer);
-			ctx.bufferData(d.bufferType, d.data, d.drawType);
-			ctx.enableVertexAttribArray(d.attribute);
-			ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
-		});
+			ctx.bindFramebuffer(ctx.FRAMEBUFFER, this.frameBufferObject);
+			ctx.framebufferTexture2D(ctx.FRAMEBUFFER, ctx.COLOR_ATTACHMENT0, ctx.TEXTURE_2D, this.frameBufferTextureObject, 0);
 
-		ctx.uniform1i(this.colorShadOP.uniform.u_framebuffer, 0);
-		ctx.activeTexture(ctx.TEXTURE0);
-		ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
+			ctx.drawArrays(ctx.POINTS, 0, exData.posVec.length / 2);
+			ctx.bindFramebuffer(ctx.FRAMEBUFFER, null);
+			ctx.useProgram(this.colorShadOP.program);
 
-		ctx.drawArrays(ctx.TRIANGLES, 0, 6);
+			ctx.uniform4fv(this.colorShadOP.uniform.u_colorArr, this.gradient.value);
+			ctx.uniform1f(this.colorShadOP.uniform.u_colorCount, this.gradient.length);
+			ctx.uniform1fv(this.colorShadOP.uniform.u_offset, this.gradient.offset);
+			ctx.uniform1f(this.colorShadOP.uniform.u_opacity, this.opacity);
+
+			this.colorShadOP.attr.forEach(function (d) {
+				ctx.bindBuffer(d.bufferType, d.buffer);
+				ctx.bufferData(d.bufferType, d.data, d.drawType);
+				ctx.enableVertexAttribArray(d.attribute);
+				ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, true, 0, 0);
+			});
+
+			ctx.uniform1i(this.colorShadOP.uniform.u_framebuffer, 0);
+			ctx.activeTexture(ctx.TEXTURE0);
+			ctx.bindTexture(ctx.TEXTURE_2D, this.frameBufferTextureObject);
+
+			ctx.drawArrays(ctx.TRIANGLES, 0, 6);
+		}
 	};
-
+	// adapt newly passed coordinates to 
+	// translate and zoom config values
 	function transCoOr (data) {
+		// 800 / 2 = 400
 		const widFat = this.width / (2 * ratio);
 		const heiFat = this.height / (2 * ratio);
+		// 1650 - 400 = 1250
 		data.x -= widFat;
 		data.y -= heiFat;
-
+		// 1250 / 400 = 3.125
 		data.x /= widFat;
 		data.y /= heiFat;
+		// 3.125
 		data.x = data.x * (this.zoom);
 		data.y = data.y * (this.zoom);
 
@@ -623,12 +914,12 @@ function Heatmap (containerElementSelector, config = {}) {
 			data.x = (c * x) + (-s * y);
 			data.y = (s * x) + (c * y);
 		}
-
+		// 3.125 * 400 = 1250
 		data.x *= widFat;
 		data.y *= heiFat;
+		// 1250 + 400 = 1650
 		data.x += widFat;
 		data.y += heiFat;
-
 		data.x -= (this.translate[0]);
 		data.y -= (this.translate[1]);
 	}
