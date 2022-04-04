@@ -525,7 +525,7 @@ function Heatmap (containerElementSelector, config = {}) {
 	 * flattened xy vector (vec2) coordinates container [x, y, x1, y1, x2, y2 etc...]
 	 * @type { Float32Array }
 	 */
-	let positionVectorsArray = [];
+	let verticesArray = [];
 	/**
 	 * Buffer for radius vectors Float32Array
 	 * @type { ArrayBuffer }
@@ -585,8 +585,10 @@ function Heatmap (containerElementSelector, config = {}) {
 		// const createRectangleCoords = (point) => {
 		// };
 		if (pLen !== len) {
-			buffer = new ArrayBuffer((len * Float32Array.BYTES_PER_ELEMENT) * 12);
-			positionVectorsArray = new Float32Array(buffer);
+			const rectangleVertices = 3;
+			const pointValue = 1;
+			buffer = new ArrayBuffer((len * Float32Array.BYTES_PER_ELEMENT) * (rectangleVertices + pointValue));
+			verticesArray = new Float32Array(buffer);
 			buffer2 = new ArrayBuffer(len * Float32Array.BYTES_PER_ELEMENT * 1);
 			// point values
 			radiusVectorsArray = new Float32Array(buffer2);
@@ -641,24 +643,20 @@ function Heatmap (containerElementSelector, config = {}) {
 			// console.log('bottom left');
 			// console.log(bottomLeft);
 
+			// top left
+			verticesArray[i * 9] = topLeft.x;
+			verticesArray[(i * 9) + 1] = topLeft.y;
 			// bottom left
-			positionVectorsArray[i * 12] = bottomLeft.x;
-			positionVectorsArray[(i * 12) + 1] = bottomLeft.y;
+			verticesArray[(i * 9) + 2] = bottomLeft.x;
+			verticesArray[(i * 9) + 3] = bottomLeft.y;
 			// bottom right
-			positionVectorsArray[(i * 12) + 2] = bottomRight.x;
-			positionVectorsArray[(i * 12) + 3] = bottomRight.y;
-			// top left
-			positionVectorsArray[(i * 12) + 4] = topLeft.x;
-			positionVectorsArray[(i * 12) + 5] = topLeft.y;
-			// top left
-			positionVectorsArray[(i * 12) + 6] = topLeft.x;
-			positionVectorsArray[(i * 12) + 7] = topLeft.y;
-			// bottom right
-			positionVectorsArray[(i * 12) + 8] = bottomRight.x;
-			positionVectorsArray[(i * 12) + 9] = bottomRight.y;
+			verticesArray[(i * 9) + 4] = bottomRight.x;
+			verticesArray[(i * 9) + 5] = bottomRight.y;
 			// top right
-			positionVectorsArray[(i * 12) + 10] = topRight.x;
-			positionVectorsArray[(i * 12) + 11] = topRight.y;
+			verticesArray[(i * 9) + 6] = topRight.x;
+			verticesArray[(i * 9) + 7] = topRight.y;
+			// value
+			verticesArray[(i * 9) + 8] = heatmapPoints[i].value;
 			// point value
 			radiusVectorsArray[i] = heatmapPoints[i].value;
 			// horizontal and vertical rectangle size
@@ -672,8 +670,8 @@ function Heatmap (containerElementSelector, config = {}) {
 		// console.log('test pos vec');
 		// console.log(testPosVecArr)
 		return {
-			// dataVec: ,
-			posVec: positionVectorsArray,
+			vertices: verticesArray,
+			// posVec: positionVectorsArray,
 			rVec: radiusVectorsArray,
 			sizeVec: sizeVectorsArray
 		};
@@ -1055,34 +1053,69 @@ function Heatmap (containerElementSelector, config = {}) {
 				1, 1,
 		 ]);
 
-		 console.log('gradient data length');
-		 console.log(this.rectangleShadOP.attr[2].data.length);
+		//  console.log('gradient data length');
+		//  console.log(this.rectangleShadOP.attr[2].data.length);
 		 	ctx.useProgram(this.rectangleShadOP.program);
 			// ctx.uniform1f(this.rectangleShadOP.uniform.u_colorCount, this.gradient.length);
 
-			this.rectangleShadOP.attr.forEach((d, idx) => {
-				const normalized = this.ctx.FALSE;
-				/* 
-					[0] a_position
-					[1] a_value
-					[2] a_texcoord
-				*/
-				// if (idx === 0) console.log('a_position log');
-				// if (idx === 1) console.log('a_value log');
-				// if (idx === 2) console.log('a_texcoord log');
-				// console.log('data');
-				// console.log(d.data);
+			// this.rectangleShadOP.attr.forEach((d, idx) => {
+			// 	const normalized = this.ctx.FALSE;
+			// 	/* 
+			// 		[0] a_position
+			// 		[1] a_value
+			// 		[2] a_texcoord
+			// 	*/
+			// 	// if (idx === 0) console.log('a_position log');
+			// 	// if (idx === 1) console.log('a_value log');
+			// 	// if (idx === 2) console.log('a_texcoord log');
+			// 	// console.log('data');
+			// 	// console.log(d.data);
 				
 				
-				ctx.bindBuffer(d.bufferType, d.buffer);
-				ctx.bufferData(d.bufferType, d.data, d.drawType);
-				ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, normalized, 0, 0);
-				ctx.enableVertexAttribArray(d.attribute);
-			});
+			// 	ctx.bindBuffer(d.bufferType, d.buffer);
+			// 	ctx.bufferData(d.bufferType, d.data, d.drawType);
+			// 	ctx.vertexAttribPointer(d.attribute, d.size, d.valueType, normalized, 0, 0);
+			// 	ctx.enableVertexAttribArray(d.attribute);
+			// });
+		 // old code END
+		//  [0] a_position
+		//  [1] a_value
+		//  [2] a_texcoord
+		// Get the storage location of a_Position, assign and enable buffer
+		 var FSIZE = Float32Array.BYTES_PER_ELEMENT;
+		 var rectVertexBuffer = ctx.createBuffer();  
+		 if (!rectVertexBuffer) {
+			 console.log('Failed to create the rectVertexBuffer object');
+			 return false;
+		 }
+		 // Write the vertex coordinates and colors to the buffer object
+		 console.log("INPUT DATA");
+		 console.log(exData.vertices);
+		 ctx.bindBuffer(ctx.ARRAY_BUFFER, rectVertexBuffer);
+		 ctx.bufferData(ctx.ARRAY_BUFFER, exData.vertices, ctx.STATIC_DRAW);
+		
+		 var a_Position = ctx.getAttribLocation(this.rectangleShadOP.program, 'a_position');
+		 if (a_Position < 0) {
+			 console.log('Failed to get the storage location of a_Position');
+			 return -1;
+		 }
+		 ctx.vertexAttribPointer(a_Position, 2, ctx.FLOAT, false, FSIZE * 3, 0);
+		 ctx.enableVertexAttribArray(a_Position);
+	 
+		 // Get the storage location of a_Position, assign buffer and enable
+		 var a_value = ctx.getAttribLocation(this.rectangleShadOP.program, 'a_value');
+		 if(a_value < 0) {
+			 console.log('Failed to get the storage location of a_Color');
+			 return -1;
+		 }
+		 ctx.vertexAttribPointer(a_value, 1, ctx.FLOAT, false, FSIZE * 3, FSIZE * 2);
+		 ctx.enableVertexAttribArray(a_value);
+
+			var n = 4 * 30; // The number of vertices
 
 			const tl = [254/255, 217/255, 138/255];
 			const tr = [252/255, 252/255, 252/255];
-			const bl = [ 18/255, 139/255, 184/255];
+			const bl = [18/255, 139/255, 184/255];
 			const br = [203/255,  79/255, 121/255];
 
 			const tlLoc = ctx.getUniformLocation(this.rectangleShadOP.program, 'tl');
@@ -1106,12 +1139,9 @@ function Heatmap (containerElementSelector, config = {}) {
 			// console.log(this.gradient.offset)
 
 			ctx.uniform1f(this.rectangleShadOP.uniform.u_max, this.max);
-			console.log('pos vec length');
-			console.log(this.exData.posVec.length);
-			// ctx.drawArrays(ctx.TRIANGLES, 0, 6);
-			ctx.drawArrays(ctx.TRIANGLES, 0, 30);
-			// ctx.drawArrays(ctx.TRIANGLES, 0, );
-			// console.log(`horizontal mode on.`);
+			
+			ctx.drawArrays(ctx.TRIANGLE_STRIP, 0, 22);
+			// ---- 
 		} else if (this.type === CIRCLE_HEATMAP) {
 			this.gradShadOP.attr[0].data = exData.posVec;
 			this.gradShadOP.attr[1].data = exData.rVec;
