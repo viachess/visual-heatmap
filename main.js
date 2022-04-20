@@ -1,5 +1,5 @@
-const HORIZONTAL_HEATMAP = "horizontal";
-const CIRCLE_HEATMAP = "circle";
+const HORIZONTAL_HEATMAP = 'horizontal';
+const CIRCLE_HEATMAP = 'circle';
 
 const isNumber = (param) => typeof param === 'number';
 const NOT_A_NUMBER_TYPE_ERROR_MESSAGE = 'Wrong parameter type, must be a number';
@@ -379,9 +379,9 @@ function Heatmap (containerElementSelector, config = {}) {
 		
 		if (!compiled) {
 			var lastError = ctx.getShaderInfoLog(shader);
-			console.error("*** Error compiling shader. SHADER: ");
+			console.error('*** Error compiling shader. SHADER: ');
 			console.error(shader);
-			console.error("ERROR: ", lastError);
+			console.error('ERROR: ', lastError);
 			ctx.deleteShader(shader);
 			return null;
 		}
@@ -395,10 +395,10 @@ function Heatmap (containerElementSelector, config = {}) {
 	 * @param {string} fshader a fragment shader program (string)
 	 * @return created program object, or null if the creation has failed
 	 */
-	function createProgram(gl, vShaderSrc, fShaderSrc) {
+	function createProgram (gl, vShaderSrc, fShaderSrc) {
 		// Create shader object
-		var vertexShader = createShader(gl, "VERTEX_SHADER", vShaderSrc);
-		var fragmentShader = createShader(gl, "FRAGMENT_SHADER", fShaderSrc);
+		var vertexShader = createShader(gl, 'VERTEX_SHADER', vShaderSrc);
+		var fragmentShader = createShader(gl, 'FRAGMENT_SHADER', fShaderSrc);
 
 		if (!vertexShader || !fragmentShader) {
 			console.error('One of the shaders creation failed');
@@ -520,8 +520,8 @@ function Heatmap (containerElementSelector, config = {}) {
 		// var fshader = createShader(ctx, 'FRAGMENT_SHADER', FSHADER_SOURCE);	
 		const program = createProgram(ctx, vShaderSource, fShaderSource);
 		if (!program) {
-			console.error("createProgram function failed");
-			return null
+			console.error('createProgram function failed');
+			return null;
 		}
 		var linked = ctx.getProgramParameter(program, ctx.LINK_STATUS);
 		if (!linked) {
@@ -531,8 +531,8 @@ function Heatmap (containerElementSelector, config = {}) {
 		}
 		console.log('rectangle shader program linked.');
 		return {
-			program: program,
-		}
+			program: program
+		};
 	}
 
 	/** 
@@ -549,7 +549,7 @@ function Heatmap (containerElementSelector, config = {}) {
 	 * flattened xy vector (vec2) coordinates container [x, y, x1, y1, x2, y2 etc...]
 	 * @type { Float32Array }
 	 */
-	let verticesArray = [];
+	const verticesArray = [];
 	/**
 	 * Buffer for radius vectors Float32Array
 	 * @type { ArrayBuffer }
@@ -562,7 +562,7 @@ function Heatmap (containerElementSelector, config = {}) {
 	let radiusVectorsArray = [];
 	
 	let buffer3;
-	let sizeVectorsArray = [];
+	const sizeVectorsArray = [];
 	/** 
 	 * point length?? TODO: Fix description
 	 * @type { number }
@@ -599,7 +599,7 @@ function Heatmap (containerElementSelector, config = {}) {
 		
 		const vertexMat = [];
 		for (let i = 0; i < len; i++) {
-			const {x, y} = heatmapPoints[i].clipSpaceCoords;
+			const { x, y } = heatmapPoints[i].clipSpaceCoords;
 			
 			const leftX = x;
 			const bottomY = y;
@@ -636,9 +636,9 @@ function Heatmap (containerElementSelector, config = {}) {
 				// 	topRight: ${JSON.stringify(topRight)}
 				// `);
 			}
-      // bl => br => tl => tl => br => tr
+			// bl => br => tl => tl => br => tr
 			const colors = [[0, 0], [1, 0], [0, 1], [0, 1], [1, 0], [1, 1]];
-			const value = heatmapPoints[i].value
+			const value = heatmapPoints[i].value;
 			// bottom left
 			vertexMat[(i * 6)] = [bottomLeft.x, bottomLeft.y, value, ...colors[0], currentGradientOffset];
 			// bottom right
@@ -657,7 +657,7 @@ function Heatmap (containerElementSelector, config = {}) {
 		return {
 			vertices: new Float32Array(vertexMat.flat()),
 			// posVec: positionVectorsArray,
-			rVec: radiusVectorsArray,
+			rVec: radiusVectorsArray
 			// sizeVec: sizeVectorsArray
 		};
 	};
@@ -719,12 +719,11 @@ function Heatmap (containerElementSelector, config = {}) {
 				
 				this.rectangleShadOP = createRectangleShader(this.ctx);
 				if (this.rectangleShadOP === null) {
-					throw new Error("rectangle shader object creation failed");
+					throw new Error('rectangle shader object creation failed');
 				}
-			}catch(e) {
+			} catch (e) {
 				console.error(e);
 			}
-			
 		}
 		
 		this.size = config.size ? config.size : 20.0;
@@ -844,7 +843,7 @@ function Heatmap (containerElementSelector, config = {}) {
 			//  [2] a_texcoord
 			// Get the storage location of a_Position, assign and enable buffer
 			var FSIZE = Float32Array.BYTES_PER_ELEMENT;
-			var rectVertexBuffer = ctx.createBuffer();  
+			var rectVertexBuffer = ctx.createBuffer();
 			if (!rectVertexBuffer) {
 				console.log('Failed to create the rectVertexBuffer object');
 				return false;
@@ -863,7 +862,7 @@ function Heatmap (containerElementSelector, config = {}) {
 		
 			// Get the storage location of a_Position, assign buffer and enable
 			var a_Value = ctx.getAttribLocation(this.rectangleShadOP.program, 'a_value');
-			if(a_Value < 0) {
+			if (a_Value < 0) {
 				console.log('Failed to get the storage location of a_Color');
 				return -1;
 			}
@@ -871,7 +870,7 @@ function Heatmap (containerElementSelector, config = {}) {
 			ctx.enableVertexAttribArray(a_Value);
 
 			var a_Texcoord = ctx.getAttribLocation(this.rectangleShadOP.program, 'a_texcoord');
-			if(a_Texcoord < 0) {
+			if (a_Texcoord < 0) {
 				console.log('Failed to get the storage location of a_texcoord');
 				return -1;
 			}
@@ -879,7 +878,7 @@ function Heatmap (containerElementSelector, config = {}) {
 			ctx.enableVertexAttribArray(a_Texcoord);
 
 			var a_GradientOffset = ctx.getAttribLocation(this.rectangleShadOP.program, 'a_gradientOffset');
-			if(a_GradientOffset < 0) {
+			if (a_GradientOffset < 0) {
 				console.log('Failed to get the storage location of a_gradientOffset');
 				return -1;
 			}
@@ -892,10 +891,10 @@ function Heatmap (containerElementSelector, config = {}) {
 			// ctx.uniform2fv(u_Resolution, new Float32Array([this.width, this.height]));
 			ctx.uniform1f(u_Max, this.max);
 
-			const tl = [100/255, 217/255, 138/255];
-			const tr = [252/255, 252/255, 252/255];
-			const bl = [18/255, 139/255, 184/255];
-			const br = [203/255,  79/255, 121/255];
+			const tl = [100 / 255, 217 / 255, 138 / 255];
+			const tr = [252 / 255, 252 / 255, 252 / 255];
+			const bl = [18 / 255, 139 / 255, 184 / 255];
+			const br = [203 / 255, 79 / 255, 121 / 255];
 
 			const tlLoc = ctx.getUniformLocation(this.rectangleShadOP.program, 'tl');
 			const trLoc = ctx.getUniformLocation(this.rectangleShadOP.program, 'tr');
@@ -974,7 +973,7 @@ function Heatmap (containerElementSelector, config = {}) {
 
 			ctx.drawArrays(ctx.TRIANGLES, 0, 6);
 		} else {
-			throw new SyntaxError('Heatmap type not recognized, existing types are: "horizontal", "circle"')
+			throw new SyntaxError('Heatmap type not recognized, existing types are: "horizontal", "circle"');
 		}
 	};
 
